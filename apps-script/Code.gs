@@ -11,7 +11,7 @@ function doPost(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  GmailApp.sendEmail(data.to, data.subject, data.body);
+  MailApp.sendEmail(data.to, data.subject, data.body);
 
   return ContentService.createTextOutput(JSON.stringify({ ok: true }))
     .setMimeType(ContentService.MimeType.JSON);

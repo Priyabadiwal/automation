@@ -4,10 +4,10 @@
 export const SHEET_ID = '1dgOTTcLYMwwnDKXXgeIzUMI-gLgwU8OCWXGP_hyLVeY'
 
 // Name of the tab/sheet that holds form responses
-export const SHEET_NAME = 'Form Responses 1'
+export const SHEET_NAME = 'UGC Creator Onboarding Form | Buddy Tezz  (Responses)'
 
 // Apps Script Web App URL that sends consent emails (see apps-script/Code.gs)
-export const APPS_SCRIPT_URL = ''
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx9Xqlgx2JRSSey5VfHmTWmq0-5BcJlrSIvNNeEiIBLEZgHny-A2KCluUUcyaDIQqN8/exec'
 
 // Pitch message sent to creators on WhatsApp (used to build click-to-chat links)
 export const WHATSAPP_PITCH = `Hi! This is Buddy Tezz AI 👋

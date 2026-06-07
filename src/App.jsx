@@ -31,7 +31,7 @@ async function sendConsentEmail(creator) {
   const body = tpl.body.replace(/{{name}}/g, creator.name || 'there')
   const res = await fetch(APPS_SCRIPT_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ to: creator.email, subject: tpl.subject, body }),
   })
   return res.ok
