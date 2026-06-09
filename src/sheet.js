@@ -2,13 +2,34 @@ import { SHEET_ID, SHEET_NAME } from './config'
 
 // Reads a publicly-viewable Google Sheet via the gviz JSON endpoint.
 // No API key needed — just set sharing to "Anyone with the link can view".
-export async function fetchSheetRows() {
-  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`
+export async function fetchSheetRows(sheetName = SHEET_NAME) {
+  const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Failed to load sheet (${res.status}). Is it shared as "Anyone with the link can view"?`)
 
   const text = await res.text()
   // Response is wrapped like: google.visualization.Query.setResponse({...});
+  const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1))
+
+  const cols = json.table.cols.map((c) => (c.label || c.id || '').trim())
+  const rows = json.table.rows.map((r, i) => {
+    const row = { _id: i }
+    r.c.forEach((cell, idx) => {
+      row[cols[idx] || `col${idx}`] = cell?.f ?? cell?.v ?? ''
+    })
+    return row
+  })
+  return { columns: cols, rows }
+}
+
+// Fetch rows from any publicly-viewable spreadsheet id and optional sheet name.
+export async function fetchExternalSheetRows(sheetId, sheetName = '') {
+  const sheetParam = sheetName ? `&sheet=${encodeURIComponent(sheetName)}` : ''
+  const url = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:json${sheetParam}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to load sheet (${res.status}). Is it shared as "Anyone with the link can view"?`)
+
+  const text = await res.text()
   const json = JSON.parse(text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1))
 
   const cols = json.table.cols.map((c) => (c.label || c.id || '').trim())

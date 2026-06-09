@@ -8,7 +8,8 @@ copy-paste workflow.
 
 - Pulls creators from your response sheet in real time (sorted/filterable by language)
 - **WhatsApp**: generates a pre-filled `wa.me` click-to-chat link per creator — one click
-  opens WhatsApp with your message already typed, no manual number lookup/copy-paste
+  opens WhatsApp with your message already typed, no manual number lookup/copy-paste. You
+  can choose the Hindi or Vernac message per creator before sending.
 - **Email**: one click sends the correct consent email (templated per language) via Gmail,
   for free, through a small Google Apps Script
 - Tracks each creator's stage (New → WhatsApp sent → Agreed → Consent sent) locally in your browser
@@ -28,6 +29,7 @@ Edit `src/config.js`:
 - `SHEET_ID` — already filled in from your sheet URL
 - `SHEET_NAME` — set this to your response tab's exact name (e.g. "Form Responses 1")
 - `WHATSAPP_PITCH` — the follow-up message sent over WhatsApp
+- `WHATSAPP_MESSAGES` — the Hindi and Vernac WhatsApp message variants shown in the dashboard
 - `CONSENT_TEMPLATES` — one email template per language (Tamil, Kannada, Default, …)
 
 ### 3. Set up free email sending (Google Apps Script)
