@@ -228,10 +228,41 @@ function doPost(e) {
     }
   }
 
-  MailApp.sendEmail(data.to, data.subject, data.body, options);
+  try {
+    MailApp.sendEmail(data.to, data.subject, data.body, options);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (sendErr) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(sendErr) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
 
-  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+function doGet(e) {
+  var params = e.parameter || {}
+  if (params.action === 'sendEmail' && params.to && params.subject && params.body) {
+    return handleSendEmail({
+      to: params.to,
+      subject: params.subject,
+      body: params.body,
+    })
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({ ok: false, error: 'Missing to/subject/body' }))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function handleSendEmail(data) {
+  var options = {};
+
+  try {
+    MailApp.sendEmail(data.to, data.subject, data.body, options);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (sendErr) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: false, error: String(sendErr) }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 /**

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { fetchSheetRows, normalizeCreator } from './sheet'
 import { buildWhatsAppLink } from './whatsapp'
 import { APPS_SCRIPT_URL, CONSENT_TEMPLATES, WHATSAPP_MESSAGES, WHATSAPP_REMINDER_MESSAGES, AGREEMENT_PDF_URL, AGREEMENT_PDF_NAME, SHEET_ID, SHEET_NAME, WILLINGNESS_SHEET_ID } from './config'
-import './App.css'// TEMP_APP_CSS_IMPORT_MARKER
+import './App.css'
 const STATUS_KEY = 'creator-dashboard-status'
 const WHATSAPP_TEMPLATE_KEY = 'creator-dashboard-whatsapp-template'
 
@@ -45,50 +45,149 @@ function selectedWhatsAppTemplateFor(creator, overrides) {
 async function fetchAgreementAttachment() {
   if (typeof window === 'undefined') return null
 
-  const attachmentUrl = AGREEMENT_PDF_URL || (AGREEMENT_PDF_NAME ? `${window.location.origin}/${encodeURIComponent(AGREEMENT_PDF_NAME)}` : '')
-  if (!attachmentUrl) return null
-
-  const response = await fetch(attachmentUrl)
-  if (!response.ok) return null
-
-  const blob = await response.blob()
-  const base64 = await new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = String(reader.result || '')
-      resolve(result.split(',')[1] || '')
+  const normalizePath = (path) => {
+    if (!path) return ''
+    let normalized = path.trim()
+    if (normalized.startsWith('public/')) {
+      normalized = normalized.replace(/^public\//, '')
     }
-    reader.onerror = () => reject(new Error('Failed to read agreement PDF'))
-    reader.readAsDataURL(blob)
-  })
-
-  if (!base64) return null
-
-  return {
-    name: AGREEMENT_PDF_NAME || 'agreement.pdf',
-    contentType: blob.type || 'application/pdf',
-    base64,
+    if (!normalized.startsWith('/') && !/^https?:\/\//i.test(normalized)) {
+      normalized = `/${normalized}`
+    }
+    return normalized
   }
+
+  const tryResolveUrl = (path) => {
+    if (!path) return null
+    if (/^https?:\/\//i.test(path)) {
+      return path
+    }
+    try {
+      return new URL(path, window.location.origin).href
+    } catch {
+      return null
+    }
+  }
+
+  const possiblePaths = []
+  if (AGREEMENT_PDF_URL) possiblePaths.push(normalizePath(AGREEMENT_PDF_URL))
+  if (AGREEMENT_PDF_NAME) possiblePaths.push(normalizePath(AGREEMENT_PDF_NAME))
+
+  for (const path of possiblePaths) {
+    const attachmentUrl = tryResolveUrl(path)
+    if (!attachmentUrl) continue
+
+    try {
+      const response = await fetch(encodeURI(attachmentUrl))
+      if (!response.ok) {
+        console.warn('Attachment fetch failed', response.status, attachmentUrl)
+        continue
+      }
+
+      const blob = await response.blob()
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = String(reader.result || '')
+          resolve(result.split(',')[1] || '')
+        }
+        reader.onerror = () => reject(new Error('Failed to read agreement PDF'))
+        reader.readAsDataURL(blob)
+      })
+
+      if (!base64) continue
+
+      return {
+        name: AGREEMENT_PDF_NAME || 'agreement.pdf',
+        contentType: blob.type || 'application/pdf',
+        base64,
+      }
+    } catch (err) {
+      console.warn('Failed to fetch agreement attachment:', err, attachmentUrl)
+    }
+  }
+
+  return null
 }
 
 async function sendConsentEmail(creator) {
   if (!APPS_SCRIPT_URL) {
-    alert('Set APPS_SCRIPT_URL in src/config.js first (see README.md).')
-    return false
+    return { ok: false, error: 'Set APPS_SCRIPT_URL in src/config.js first (see README.md).' }
   }
-  const tpl = emailTemplateFor(creator.language)
-  const body = tpl.body.replace(/{{name}}/g, creator.name || 'there')
-  const payload = { to: creator.email, subject: tpl.subject, body }
+  if (!creator?.email) {
+    return { ok: false, error: 'No email address available for this creator.' }
+  }
 
-  const agreementAttachment = await fetchAgreementAttachment()
-  if (agreementAttachment) payload.attachments = [agreementAttachment]
+  try {
+    const tpl = emailTemplateFor(creator.language)
+    const body = tpl.body.replace(/{{name}}/g, creator.name || 'there')
+    const payload = { to: creator.email, subject: tpl.subject, body }
 
-  const res = await fetch(APPS_SCRIPT_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-  })
-  return res.ok
+    const agreementAttachment = await fetchAgreementAttachment()
+    if (agreementAttachment) payload.attachments = [agreementAttachment]
+
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    })
+
+    const text = await res.text()
+    let json = null
+    try {
+      json = JSON.parse(text)
+    } catch {
+      // ignore parse errors
+    }
+
+    if (!res.ok || (json && json.ok === false)) {
+      const fallback = await trySendEmailWithGet(creator, tpl, body, json)
+      if (fallback) return fallback
+      return { ok: false, error: json?.error || `HTTP ${res.status}: ${text}` }
+    }
+
+    return { ok: true }
+  } catch (err) {
+    console.error('Failed to send consent email:', err)
+    const fallback = await trySendEmailWithGet(creator, tpl, body)
+    if (fallback) return fallback
+    return { ok: false, error: err.message }
+  }
+}
+
+async function trySendEmailWithGet(creator, tpl, body, previousJson) {
+  const fallbackError = previousJson?.error || ''
+  if (!creator?.email || !tpl?.subject || !body) return null
+
+  if (fallbackError && fallbackError.toLowerCase().includes('missing to/subject/body')) {
+    const params = new URLSearchParams({
+      action: 'sendEmail',
+      to: creator.email,
+      subject: tpl.subject,
+      body,
+    })
+    const fallbackUrl = `${APPS_SCRIPT_URL}?${params.toString()}`
+    try {
+      const response = await fetch(fallbackUrl, { method: 'GET', redirect: 'follow' })
+      const text = await response.text()
+      let json = null
+      try {
+        json = JSON.parse(text)
+      } catch {
+        return null
+      }
+      if (response.ok && json.ok !== false) {
+        return { ok: true }
+      }
+      return { ok: false, error: json?.error || text || 'Fallback GET failed' }
+    } catch (err) {
+      console.warn('GET fallback for send email failed:', err)
+      return null
+    }
+  }
+
+  return null
 }
 
 export default function App() {
@@ -355,12 +454,13 @@ export default function App() {
   }
 
   async function handleSendEmail(creator) {
-    const ok = await sendConsentEmail(creator)
-    if (ok) {
+    const result = await sendConsentEmail(creator)
+    if (result.ok) {
       setStage(creator.id, 'consent_sent')
       alert(`Consent email sent to ${creator.name || creator.email}`)
     } else {
-      alert('Failed to send email — check APPS_SCRIPT_URL deployment.')
+      const message = result.error || 'Failed to send email — check APPS_SCRIPT_URL deployment.'
+      alert(message)
     }
   }
 
@@ -555,8 +655,8 @@ export default function App() {
               <table className="creator-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Language</th>
+                    <th className="sticky-name">Name</th>
+                    <th className="sticky-language">Language</th>
                     <th>Instagram</th>
                     <th>Followers</th>
                     <th>WhatsApp</th>
@@ -573,13 +673,13 @@ export default function App() {
                     const onboarded = isOnboardedCreator(c, stage)
                     return (
                       <tr key={c.id} className={onboarded ? 'onboarded-row' : ''}>
-                        <td>
+                        <td className="sticky-name">
                           <div className="creator-name-wrap">
                             <div className="creator-name">{c.name || '—'}</div>
                             {onboarded && <span className="creator-chip creator-chip-onboarded">Onboarded</span>}
                           </div>
                         </td>
-                        <td><span className="badge">{c.language || '—'}</span></td>
+                        <td className="sticky-language"><span className="badge">{c.language || '—'}</span></td>
                         <td>{c.instagram || '—'}</td>
                         <td>{c.followers || '—'}</td>
                         <td>{c.whatsapp || '—'}</td>
@@ -654,7 +754,12 @@ export default function App() {
                 <thead>
                   <tr>
                     {onboarded.columns.map((c) => (
-                      <th key={c}>{c}</th>
+                      <th
+                        key={c}
+                        className={c === 'name' ? 'sticky-name' : c === 'language' ? 'sticky-language' : undefined}
+                      >
+                        {c}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -662,7 +767,12 @@ export default function App() {
                   {onboarded.rows.map((r) => (
                     <tr key={r._id}>
                       {onboarded.columns.map((c) => (
-                        <td key={c}>{r[c] || '—'}</td>
+                        <td
+                          key={c}
+                          className={c === 'name' ? 'sticky-name' : c === 'language' ? 'sticky-language' : undefined}
+                        >
+                          {r[c] || '—'}
+                        </td>
                       ))}
                     </tr>
                   ))}
