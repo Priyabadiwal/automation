@@ -222,6 +222,7 @@ export default function App() {
   const [view, setView] = useState('creators')
   const [onboarded, setOnboarded] = useState({ columns: [], rows: [] })
   const [onboardedEmails, setOnboardedEmails] = useState(new Set())
+  const [onboardedLanguageFilter, setOnboardedLanguageFilter] = useState(new Set())
 
   function normalizeEmail(value) {
     return String(value || '').toLowerCase().trim()
@@ -290,17 +291,18 @@ export default function App() {
       import('./sheet').then(({ fetchExternalSheetRows }) => {
         fetchExternalSheetRows(WILLINGNESS_SHEET_ID)
           .then(({ columns, rows }) => {
-            // detect status/email columns
+            // detect status/email columns with broader matching
             const headers = columns.map((h) => (h || '').toString().toLowerCase())
             const emailIdx = headers.findIndex((h) => /email/.test(h))
-            const statusIdx = headers.findIndex((h) => /in|willing|status|reply|consent|agree/.test(h))
+            const statusIdx = headers.findIndex((h) => /status|in|willing|reply|consent|agree|response/.test(h))
 
-            // filter rows where status indicates in/agree/yes
+            // filter rows where status indicates in/agree/yes - more flexible matching
             const filteredRows = rows.filter((r) => {
-              const status = statusIdx >= 0 ? (r[columns[statusIdx]] || '').toString().toLowerCase() : ''
+              const status = statusIdx >= 0 ? (r[columns[statusIdx]] || '').toString().toLowerCase().trim() : ''
               const email = emailIdx >= 0 ? (r[columns[emailIdx]] || '').toString().toLowerCase().trim() : ''
               if (!email) return false
-              return status.indexOf('in') !== -1 || status.indexOf("i'm in") !== -1 || status.indexOf('agree') !== -1 || status.indexOf('yes') !== -1
+              // Match yes, in, agree, or any variation
+              return /yes|in|agree|i'm in/.test(status)
             })
 
             // Enrich with response info from main creators list (match by email)
@@ -309,23 +311,35 @@ export default function App() {
               if (c.email) respMap[c.email.toString().toLowerCase().trim()] = c
             })
 
-            const outColumns = ['name', 'email', 'whatsapp', 'language', 'status', 'sourceRow']
-            const outRows = filteredRows.map((r, i) => {
+            // Deduplicate by normalized email
+            const seenOnboardedEmails = new Set()
+            const uniqueRows = []
+            filteredRows.forEach((r) => {
+              const email = emailIdx >= 0 ? (r[columns[emailIdx]] || '').toString().toLowerCase().trim() : ''
+              if (!email || seenOnboardedEmails.has(email)) return
+              seenOnboardedEmails.add(email)
+              uniqueRows.push(r)
+            })
+
+            const outColumns = ['sourceRow', 'name', 'email', 'whatsapp', 'language', 'status']
+            const outRows = uniqueRows.map((r, i) => {
               const email = emailIdx >= 0 ? (r[columns[emailIdx]] || '').toString().toLowerCase().trim() : ''
               const status = statusIdx >= 0 ? (r[columns[statusIdx]] || '') : ''
               const creator = respMap[email]
               return {
                 _id: i,
+                sourceRow: r._id + 1,
                 name: (creator && creator.name) || r[columns[headers.findIndex((h) => /name/.test(h))] || ''] || '',
                 email: email || '',
                 whatsapp: (creator && creator.whatsapp) || '',
                 language: (creator && creator.language) || '',
                 status: status || '',
-                sourceRow: r._id + 1,
               }
             })
 
             setOnboarded({ columns: outColumns, rows: outRows })
+            // Reset language filter when onboarded data updates
+            setOnboardedLanguageFilter(new Set())
           })
           .catch((e) => setError(e.message))
           .finally(() => setLoading(false))
@@ -622,7 +636,7 @@ export default function App() {
                   }
                 }}
               >
-                {triggerEnabled ? 'Disable daily sync' : 'Enable daily sync'}
+                {/* {triggerEnabled ? 'Disable daily sync' : 'Enable daily sync'} */}
               </button>
             </div>
           </div>
@@ -740,47 +754,106 @@ export default function App() {
           </section>
         )}
 
-        {!loading && !error && view === 'onboarded' && (
-          <section className="panel table-panel">
-            <div className="table-header">
-              <div>
-                <h2>Onboarded Creators</h2>
-                <p>Creators marked as onboarded / "I'M IN" across the system.</p>
-              </div>
-            </div>
+        {!loading && !error && view === 'onboarded' && (() => {
+          // Extract unique individual languages, normalizing and cleaning punctuation
+          const langMap = new Map() // normalized -> original
+          onboarded.rows.forEach((r) => {
+            const langString = (r.language || '').trim()
+            if (langString) {
+              // Split by space/comma and clean up each language
+              const langs = langString.split(/[\s,]+/).filter(Boolean)
+              langs.forEach((lang) => {
+                const cleaned = lang.trim()
+                if (cleaned) {
+                  const normalized = cleaned.toLowerCase()
+                  // Keep first occurrence of each language (case-insensitive)
+                  if (!langMap.has(normalized)) {
+                    langMap.set(normalized, cleaned)
+                  }
+                }
+              })
+            }
+          })
+          const uniqueLanguages = Array.from(langMap.values()).sort()
 
-            <div className="table-wrap">
-              <table className="creator-table">
-                <thead>
-                  <tr>
-                    {onboarded.columns.map((c) => (
-                      <th
-                        key={c}
-                        className={c === 'name' ? 'sticky-name' : c === 'language' ? 'sticky-language' : undefined}
-                      >
-                        {c}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {onboarded.rows.map((r) => (
-                    <tr key={r._id}>
+          // Filter rows: if no filter selected, show all. Otherwise show rows where language contains ANY selected language
+          const filteredOnboardedRows = onboarded.rows.filter((r) => {
+            if (onboardedLanguageFilter.size === 0) return true
+            const langString = (r.language || '').trim()
+            if (!langString) return false
+            const langs = langString.split(/[\s,]+/).filter(Boolean)
+            // Check if any of the row's languages match any selected filter (case-insensitive)
+            return langs.some((lang) => onboardedLanguageFilter.has(lang.trim().toLowerCase()))
+          })
+
+          return (
+            <section className="panel table-panel">
+              <div className="table-header">
+                <div>
+                  <h2>Onboarded Creators</h2>
+                  <p>Creators marked as onboarded / "I'M IN" across the system.</p>
+                </div>
+              </div>
+
+              <div className="toolbar-panel" style={{ marginBottom: '16px' }}>
+                <div style={{ marginBottom: '12px', fontWeight: '600', color: '#0f172a' }}>Filter by Language:</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                  {uniqueLanguages.map((lang) => (
+                    <label key={lang} style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={onboardedLanguageFilter.has(lang.toLowerCase())}
+                        onChange={(e) => {
+                          const newFilter = new Set(onboardedLanguageFilter)
+                          const normalized = lang.toLowerCase()
+                          if (e.target.checked) {
+                            newFilter.add(normalized)
+                          } else {
+                            newFilter.delete(normalized)
+                          }
+                          setOnboardedLanguageFilter(newFilter)
+                        }}
+                        style={{ cursor: 'pointer' }}
+                      />
+                      <span>{lang}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="table-wrap">
+                <table className="creator-table">
+                  <thead>
+                    <tr>
                       {onboarded.columns.map((c) => (
-                        <td
+                        <th
                           key={c}
                           className={c === 'name' ? 'sticky-name' : c === 'language' ? 'sticky-language' : undefined}
                         >
-                          {r[c] || '—'}
-                        </td>
+                          {c}
+                        </th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
+                  </thead>
+                  <tbody>
+                    {filteredOnboardedRows.map((r) => (
+                      <tr key={r._id}>
+                        {onboarded.columns.map((c) => (
+                          <td
+                            key={c}
+                            className={c === 'name' ? 'sticky-name' : c === 'language' ? 'sticky-language' : undefined}
+                          >
+                            {r[c] || '—'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )
+        })()}
       </main>
     </div>
   )
