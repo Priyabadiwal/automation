@@ -7,7 +7,7 @@ export const SHEET_ID = '1dgOTTcLYMwwnDKXXgeIzUMI-gLgwU8OCWXGP_hyLVeY'
 export const SHEET_NAME = 'UGC Creator Onboarding Form | Buddy Tezz  (Responses)'
 
 // Apps Script Web App URL that sends consent emails (see apps-script/Code.gs)
-export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxU0vqXG4-SahcMlbutYW6KDQmfzWie1oFxOM8J12IR2szWgdOV5YxmDx3hm0IgSTVg/exec'
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUYraGspR-g9uK9i7TQPUAi_6fi93x533mZxdAr5B5J2jKGpL53RTPqtJJuM5OT0Sx/exec'
 
 // Public URL to the agreement PDF to attach to consent emails.
 // Host this file where it's publicly accessible (e.g. your web host or a public Drive link).

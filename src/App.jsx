@@ -110,6 +110,40 @@ async function fetchAgreementAttachment() {
   return null
 }
 
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  const { method = 'POST', timeout = 15000, ...rest } = options
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), timeout)
+      
+      const res = await fetch(url, {
+        method,
+        signal: controller.signal,
+        ...rest,
+      })
+      
+      clearTimeout(timeoutId)
+      
+      if (!res.ok && res.status !== 200) {
+        if (attempt < maxRetries && res.status >= 500) {
+          await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000))
+          continue
+        }
+      }
+      
+      return res
+    } catch (err) {
+      clearTimeout(timeoutId)
+      if (attempt === maxRetries) throw err
+      if (err.name !== 'AbortError') throw err
+      // Timeout - retry with backoff
+      await new Promise(r => setTimeout(r, Math.pow(2, attempt - 1) * 1000))
+    }
+  }
+}
+
 async function sendConsentEmail(creator) {
   if (!APPS_SCRIPT_URL) {
     return { ok: false, error: 'Set APPS_SCRIPT_URL in src/config.js first (see README.md).' }
@@ -126,11 +160,12 @@ async function sendConsentEmail(creator) {
     const agreementAttachment = await fetchAgreementAttachment()
     if (agreementAttachment) payload.attachments = [agreementAttachment]
 
-    const res = await fetch(APPS_SCRIPT_URL, {
+    const res = await fetchWithRetry(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload),
       redirect: 'follow',
+      timeout: 20000,
     })
 
     const text = await res.text()
@@ -144,15 +179,16 @@ async function sendConsentEmail(creator) {
     if (!res.ok || (json && json.ok === false)) {
       const fallback = await trySendEmailWithGet(creator, tpl, body, json)
       if (fallback) return fallback
-      return { ok: false, error: json?.error || `HTTP ${res.status}: ${text}` }
+      return { ok: false, error: json?.error || `HTTP ${res.status}: Check Apps Script deployment (status: ${res.status})` }
     }
 
     return { ok: true }
   } catch (err) {
     console.error('Failed to send consent email:', err)
-    const fallback = await trySendEmailWithGet(creator, tpl, body)
-    if (fallback) return fallback
-    return { ok: false, error: err.message }
+    const errorMsg = err.name === 'AbortError' 
+      ? 'Request timed out. Check your internet connection and APPS_SCRIPT_URL.'
+      : err.message
+    return { ok: false, error: errorMsg }
   }
 }
 
@@ -257,29 +293,35 @@ export default function App() {
 
   useEffect(() => {
     if (!APPS_SCRIPT_URL) return
-    // fetch last sync status
-    fetch(APPS_SCRIPT_URL, {
+    // fetch last sync status with retry logic
+    fetchWithRetry(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'getSyncStatus' }),
-    })
+      timeout: 15000,
+    }, 2)
       .then((r) => r.json())
       .then((j) => {
         if (j.ok && j.lastSynced) setLastSynced(j.lastSynced)
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.warn('Failed to fetch sync status:', err.message)
+      })
 
     // fetch trigger status
-    fetch(APPS_SCRIPT_URL, {
+    fetchWithRetry(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify({ action: 'getTriggerStatus' }),
-    })
+      timeout: 15000,
+    }, 2)
       .then((r) => r.json())
       .then((j) => {
         if (j.ok) setTriggerEnabled(!!j.enabled)
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.warn('Failed to fetch trigger status:', err.message)
+      })
   }, [])
 
   useEffect(() => {
