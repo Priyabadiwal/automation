@@ -123,6 +123,8 @@ Just following up on the consent email I shared earlier.
 
 Please review the agreement and reply to the email with your consent if you’re still interested.
 
+Please fill this form and reply to this email with your consent here is the form link - https://forms.gle/JZqW4Wf21c2MFFfGA
+
 If you already replied, please ignore this message.
 
 Team Buddy Tezz AI`,
