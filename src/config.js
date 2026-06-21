@@ -117,27 +117,33 @@ Team Buddy Tezz AI🤖`,
 export const WHATSAPP_PITCH = WHATSAPP_MESSAGES.Hindi
 
 export const WHATSAPP_REMINDER_MESSAGES = {
-  Hindi: `Hi, this is Priya from Buddy Tezz AI Automation Company.
+  Hindi: `Hi, This is Priya from Buddy Tezz AI, 
 
-Just following up on the consent email I shared earlier.
+just a quick follow-up on the consent email.
 
-Please review the agreement and reply to the email with your consent if you’re still interested.
+Please review the agreement and reply with your consent if interested. Also, make sure to fill out the form:
+https://forms.gle/JZqW4Wf21c2MFFfGA
 
-Please fill this form and reply to this email with your consent here is the form link - https://forms.gle/JZqW4Wf21c2MFFfGA
+If you’ve already completed both, please ignore this message.
 
-If you already replied, please ignore this message.
+Looking forward to having you onboard!
 
+Best regards,
+Priya
 Team Buddy Tezz AI`,
-  Vernac: `Hi, this is Priya from Buddy Tezz AI Automation Company.
+  Vernac: `Hi, This is Priya from Buddy Tezz AI, 
 
-Just following up on the consent email I shared earlier.
+just a quick follow-up on the consent email.
 
-Please review the agreement and reply to the email with your consent if you’re still interested.
+Please review the agreement and reply with your consent if interested. Also, make sure to fill out the form:
+https://forms.gle/JZqW4Wf21c2MFFfGA
 
-Please fill this form and reply to this email with your consent here is the form link - https://forms.gle/JZqW4Wf21c2MFFfGA
+If you’ve already completed both, please ignore this message.
 
-If you already replied, please ignore this message.
+Looking forward to having you onboard!
 
+Best regards,
+Priya
 Team Buddy Tezz AI`,
 }
 
